@@ -1,6 +1,8 @@
 import requests
 import json
 from bs4 import BeautifulSoup
+from datashape import null
+
 from DAO import getCursor
 import openpyxl
 
@@ -63,6 +65,15 @@ if __name__ == '__main__':
                     description = card.find_next("div", attrs={"class": "d8eab2cf7f"}).text
                     elem["description"] = description
 
+                    # 酒店评分
+                    try:
+                        score = card.find_next("div", attrs={"class":"b5cd09854e d10a6220b4"}).text
+                        elem["score"] = score
+                    except Exception as e:
+                        score = null
+                        elem["score"] = score
+                        print(e)
+
                     # 进入酒店链接获取更多信息
                     info = requests.get(link, headers=header).text
                     info_soup = BeautifulSoup(info, "html.parser")
@@ -97,6 +108,24 @@ if __name__ == '__main__':
                     location = info_soup.find_all("span", attrs={"data-component": "tooltip"})[0].text.replace("\n", "")
                     elem["location"] = location
 
+                    # 评价数量
+                    try:
+                        commentNum = card.find_next("div", attrs={"class": "d8eab2cf7f c90c0a70d3 db63693c62"}).text[:-5]
+                        elem["commentNum"] = commentNum
+                    except Exception as e:
+                        commentNum = "-1"
+                        elem["commentNum"] = commentNum
+                        print(e)
+
+                    # 简评
+                    try:
+                        briefComment = card.find_next("div", attrs={"class":"b5cd09854e f0d4d6a2f5 e46e88563a"}).get("aria-label")
+                        elem["briefComment"] = briefComment
+                    except Exception as e:
+                        briefComment = null
+                        elem["briefComment"] = briefComment
+                        print(e)
+
                     # 图片
                     images_link = info_soup.find("div", attrs={
                         "class": "clearfix bh-photo-grid bh-photo-grid--space-down fix-score-hover-opacity"})
@@ -108,26 +137,63 @@ if __name__ == '__main__':
                             f.write(im_res.content)
                         elem[f"image{i}"] = image_link
 
-                    # 读取图片并写入数据库
-                    images = []
-                    for i in range(1, 4):
-                        with open("./images/%s %d.jpg" % (name, i), 'rb') as f:
-                            images.append(f.read())
-                    stm = "INSERT INTO HOTELS(ID, LINK, NAME, DESCRIPTION, AREA, COUNTRY, PROVINCE, CITY, REGION, " \
-                          "LOCATION, IMAGE1, IMAGE2, IMAGE3) " \
-                          "VALUES(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
-                    values = (
-                        num, link, name, description, area, country, province, city, region, location, images[0],
-                        images[1],
-                        images[2])
-                    cur.execute(stm, values)
-                    # con.commit()
-                    print(elem)
-                    elem_list.append(elem)
-                    num += 1
+                    try:
+                        # 读取图片并写入数据库
+                        images = []
+                        for i in range(1, 4):
+                            with open("./images/%s %d.jpg" % (name, i), 'rb') as f:
+                                images.append(f.read())
+                        stm = "INSERT INTO HOTEL(ID, LINK, NAME, DESCRIPTION, AREA, COUNTRY, PROVINCE, CITY, REGION, " \
+                              "LOCATION, IMAGE1, IMAGE2, IMAGE3, SCORE, COMMENTNUM, BRIEFCOMMENT) " \
+                              "VALUES(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+                        values = (
+                            num, link, name, description, area, country, province, city, region, location, images[0],
+                            images[1], images[2], score, commentNum, briefComment)
+                        cur.execute(stm, values)
+                        # con.commit()
+                        print(elem)
+                        num += 1
+                    except Exception as e:
+                        print(e)
+                        counter += 1
+                    try:
+                        lst = info_soup.find_all("div", attrs={"class": "ed14448b9f ccff2b4c43 cb10ca9525"})
+                        for item in lst:
+                            try:
+                                # 酒店房型
+                                rType = item.find("span").text
+                                elem = {"rType": rType}
+                            except Exception as e:
+                                print(e)
+                                rType = null
+                                elem = {"rType": null}
+
+                            try:
+                                # 床型
+                                bType = item.find("span").find_next("span").text
+                                elem["bType"] = bType
+                            except Exception as e:
+                                print(e)
+                                bType = null
+                                elem["bType"] = null
+
+                            try:
+                                stm = "INSERT INTO ROOMTYPE(HNAME, RTYPE, BTYPE) " \
+                                      "VALUES(%s, %s, %s)"
+                                values = (name, rType, bType)
+                                cur.execute(stm, values)
+                                print(num, elem)
+                                elem_list.append(elem)
+                            except Exception as e:
+                                print(e)
+                            finally:
+                                continue
+                    except Exception as e:
+                        print(e)
+                    finally:
+                        continue
                 except Exception as e:
                     print(e)
-                    counter += 1
                 finally:
                     continue
             con.commit()
