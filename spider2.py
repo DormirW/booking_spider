@@ -2,9 +2,31 @@ import requests
 import json
 from bs4 import BeautifulSoup
 from datashape import null
-
+import time
 from DAO import getCursor
 import openpyxl
+
+MAX_RETRIES = 3
+
+
+def get_res(url, header):
+    retries = 0
+    while retries < MAX_RETRIES:
+        try:
+            response = requests.get(url, headers=header)
+            # 检查响应状态码，如果为200表示请求成功
+            if response.status_code == 200:
+                return response.text
+            else:
+                print("请求失败，状态码：{}".format(response.status_code))
+        except requests.exceptions.RequestException as e:
+            print("请求异常：{}".format(e))
+        # 连接失败时等待一段时间后进行重试
+        time.sleep(5)
+        retries += 1
+    print("连接失败，达到最大重试次数")
+    return None
+
 
 if __name__ == '__main__':
     header = {
@@ -13,8 +35,16 @@ if __name__ == '__main__':
     }
     num = 0
     elem_list = []
-    places = ["中国河北", "山西", "黑龙江", "吉林", "沈阳市", "大连市", "鞍山市", "抚顺市", "本溪市", "丹东市",
-              "锦州市", "营口市", "阜新市", "辽阳市", "盘锦市", "铁岭市", "朝阳市", "葫芦岛市", "江苏", "浙江", "安徽",
+    # places = ["中国河北", "山西", "黑龙江", "吉林", "沈阳市", "大连市", "鞍山市", "抚顺市", "本溪市", "丹东市",
+    #           "锦州市", "营口市", "阜新市", "辽阳市", "盘锦市", "铁岭市", "朝阳市", "葫芦岛市", "江苏", "浙江", "安徽",
+    #           "福建", "江西", "山东", "郑州市", "开封市", "洛阳市", "平顶山市", "安阳市", "鹤壁市", "新乡市", "焦作市",
+    #           "濮阳市", "许昌市", "漯河市", "三门峡市", "南阳市", "商丘市", "信阳市", "周口市", "驻马店市",
+    #           "湖北", "湖南", "广东", "海南", "成都市", "自贡市", "攀枝花市", "泸州市", "德阳市", "绵阳市", "广元市",
+    #           "遂宁市", "内江市", "乐山市", "南充市", "眉山市", "宜宾市", "广安市", "达州市", "雅安市", "巴中市",
+    #           "资阳市", "贵州", "云南", "西安市", "铜川市", "宝鸡市", "咸阳市", "渭南市", "延安市", "汉中市", "榆林市",
+    #           "安康市", "商洛市", "甘肃", "青海", "台湾", "内蒙古",
+    #           "广西", "西藏", "宁夏", "新疆", "北京", "天津", "上海", "重庆", "香港", "澳门"]
+    places = ["铁岭市", "朝阳市", "葫芦岛市", "江苏", "浙江", "安徽",
               "福建", "江西", "山东", "郑州市", "开封市", "洛阳市", "平顶山市", "安阳市", "鹤壁市", "新乡市", "焦作市",
               "濮阳市", "许昌市", "漯河市", "三门峡市", "南阳市", "商丘市", "信阳市", "周口市", "驻马店市",
               "湖北", "湖南", "广东", "海南", "成都市", "自贡市", "攀枝花市", "泸州市", "德阳市", "绵阳市", "广元市",
@@ -25,13 +55,14 @@ if __name__ == '__main__':
     # 建立数据库链连接
     con, cur = getCursor()
     for place in places:
-        for offset in range(0, 10000, 25):
+        print("当前地区为", place)
+        for offset in range(0, 1000, 25):
             counter = 0
             # 构造url
             url = f"https://www.booking.cn/searchresults.zh-cn.html?ss={place}&offset={offset}"
 
             # 发送请求，接收响应
-            data = requests.get(url, headers=header).text
+            data = get_res(url, header)
 
             # 解析html
             soup = BeautifulSoup(data, "html.parser")
@@ -39,6 +70,8 @@ if __name__ == '__main__':
 
             # 获取你想要的数据
             cards = soup.find_all("div", attrs={"data-testid": "property-card"})
+            if cards == []:
+                counter = 18
             for card in cards:
                 if counter >= 18:
                     break
@@ -67,7 +100,7 @@ if __name__ == '__main__':
 
                     # 酒店评分
                     try:
-                        score = card.find_next("div", attrs={"class":"b5cd09854e d10a6220b4"}).text
+                        score = card.find_next("div", attrs={"class": "b5cd09854e d10a6220b4"}).text
                         elem["score"] = score
                     except Exception as e:
                         score = null
@@ -75,7 +108,7 @@ if __name__ == '__main__':
                         print(e)
 
                     # 进入酒店链接获取更多信息
-                    info = requests.get(link, headers=header).text
+                    info = get_res(link, header)
                     info_soup = BeautifulSoup(info, "html.parser")
                     info_soup.prettify()
 
@@ -110,7 +143,8 @@ if __name__ == '__main__':
 
                     # 评价数量
                     try:
-                        commentNum = card.find_next("div", attrs={"class": "d8eab2cf7f c90c0a70d3 db63693c62"}).text[:-5]
+                        commentNum = card.find_next("div", attrs={"class": "d8eab2cf7f c90c0a70d3 db63693c62"}).text[
+                                     :-5]
                         elem["commentNum"] = commentNum
                     except Exception as e:
                         commentNum = "-1"
@@ -119,7 +153,8 @@ if __name__ == '__main__':
 
                     # 简评
                     try:
-                        briefComment = card.find_next("div", attrs={"class":"b5cd09854e f0d4d6a2f5 e46e88563a"}).get("aria-label")
+                        briefComment = info_soup.find_next("div", attrs={"class": "b5cd09854e f0d4d6a2f5 e46e88563a"}).get(
+                            "aria-label")
                         elem["briefComment"] = briefComment
                     except Exception as e:
                         briefComment = null
@@ -182,7 +217,7 @@ if __name__ == '__main__':
                                       "VALUES(%s, %s, %s)"
                                 values = (name, rType, bType)
                                 cur.execute(stm, values)
-                                print(num, elem)
+                                print(f"offset={offset},num={num}", elem)
                                 elem_list.append(elem)
                             except Exception as e:
                                 print(e)
@@ -198,6 +233,7 @@ if __name__ == '__main__':
                     continue
             con.commit()
             if counter >= 18:
+                print(f"{place}已爬取完成，进入下一地区")
                 break
 
     # 提交请求，关闭数据库
