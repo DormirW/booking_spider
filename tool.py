@@ -1,5 +1,5 @@
-str="512条住客点评"
+str="基隆市、新竹市、嘉义市"
 
-str=str.replace("、", '\", \"')
+str=str.replace("、", '\"], [\"')
 
-print(str[:-5])
+print(str)
